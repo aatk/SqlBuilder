@@ -1,4 +1,7 @@
 <?php
+/**
+ * ДЕМОНСТРАЦИЯ РАБОТЫ БИЛДЕРА
+ */
 
 include_once "source/SqlBuilder.class.php";
 
@@ -87,7 +90,7 @@ $result = $SqlBuilder->Sql([
 print_r($result);
 
 
-$sql = new SqlBuilder();
+$sql      = new SqlBuilder();
 $sql_text = $sql->select([
     "table" => "TABLE(ALIAS)",
     "items" => [ "ALIAS.item1(sel)", "ALIAS.item2", "ALIAS.item3" ],
@@ -124,9 +127,8 @@ $params = $sql->GetSQLParams();
 print_r($params);
 
 
-
 $SqlBuilder = new SqlBuilder();
-$sql_text = $SqlBuilder->insert([
+$sql_text   = $SqlBuilder->insert([
     "table"  => "TABLE3(ALIAS3)",
     "items"  => [ "item1", "item2", "item3" ],
     "values" => [ 123456, "test2", "test3" ],
@@ -137,9 +139,8 @@ $params = $SqlBuilder->GetSQLParams();
 print_r($params);
 
 
-
 $SqlBuilder = new SqlBuilder();
-$sql_text = $SqlBuilder->update([
+$sql_text   = $SqlBuilder->update([
     "table"  => "TABLE3(TABLE3)",
     "values" => [
         "item1" => "test2",
@@ -153,7 +154,7 @@ print_r($params);
 
 
 $SqlBuilder = new SqlBuilder();
-$sql_text = $SqlBuilder->delete([
+$sql_text   = $SqlBuilder->delete([
     "table" => "TABLE4(ALIAS4)",
     "where" => [
         "OR" => [

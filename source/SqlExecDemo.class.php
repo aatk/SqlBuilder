@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * Добавьте в тело функция свой код, который обращается к БД
+ * Это может быть запросы через PDO, или запросы через прямые библиотеки
+ */
+
+
 class SQLExecDemo implements SQLExecInterface
 {
     /**
@@ -8,7 +14,7 @@ class SQLExecDemo implements SQLExecInterface
      *
      * @return array
      */
-    public function sql(string $sqltext, array $sqlparams) : array
+    public function sql(string $sqltext, array $sqlparams)
     {
         // TODO: Implement sql() method.
     }
@@ -16,19 +22,17 @@ class SQLExecDemo implements SQLExecInterface
     /**
      * @return array
      */
-    public function ids() : array
+    public function ids()
     {
         // TODO: Implement ids() method.
     }
     
-    public function load_data_from_cache(string $sql, array $params)
-    : array
+    public function save_data_to_cache(array $shema, array $data)
     {
         // TODO: Implement load_data_from_cache() method.
     }
     
-    public function save_data_to_cache(string $sql, array $params)
-    : bool
+    public function load_data_from_cache(array $shema)
     {
         // TODO: Implement save_data_to_cache() method.
     }

@@ -2,35 +2,53 @@
 
 interface SQLExecInterface
 {
-    //Функция выполняет запрос и возвращает результат
-    public function sql(string $sqltext, array $sqlparams): array ;
-    
-    //Функция возвращает список increment по последнему insert
-    public function ids() : array ;
+    /**
+     * Функция выполняет запрос и возвращает результат
+     *
+     * @param string $sqltext
+     * @param array  $sqlparams
+     *
+     * @return array
+     */
+    public function sql(string $sqltext, array $sqlparams);
     
     /**
+     * Функция возвращает список increment по последнему insert
+     *
+     * @return array
+     */
+    public function ids();
+    
+    /**
+     * Функци записывает в ваш кеш схему и результат выполнения
+     * Рекомендуется использовать вместе с MEMCACHE
+     *
      * @param string $sql
      * @param array  $params
+     * @param array  $data
      *
-     * @return bool
+     * @return mixed
      */
-    public function save_data_to_cache(string $sql, array $params) : bool ;
+    public function save_data_to_cache(array $shema, array $data);
     
     /**
+     * Функция читает из вашего кеша результат выполнения по входящей схеме
+     * Рекомендуется использовать вместе с MEMCACHE
+     *
      * @param string $sql
      * @param array  $params
      *
      * @return array
      */
-    public function load_data_from_cache(string $sql, array $params) : array ;
+    public function load_data_from_cache(array $shema);
 }
-
 
 class SqlBuilder
 {
     private $type             = "MYSQL";
     private $executive        = false;
-    private $savetosession      = false;
+    private $cached           = false;
+    private $savetosession    = false;
     private $Object           = null;
     private $sqlstorage       = [];
     private $paramarray       = [];
@@ -44,7 +62,7 @@ class SqlBuilder
      * @param false                 $save_to_session
      * @param SQLExecInterface|null $Object
      */
-    public function __construct($type = "", $executive = false, $save_to_session = false, SQLExecInterface $Object = null)
+    public function __construct($type = "", $executive = false, $save_to_session = false, $cached = false, SQLExecInterface $Object = null)
     {
         if ($type != "")
         {
@@ -66,20 +84,26 @@ class SqlBuilder
             }
         }
         
+        $this->cached = $cached;
+        
         if (!is_null($Object))
         {
             $this->SetExecutiveObject($Object);
         }
         
     }
-   
+    
     //---------------=============  SETTINGS  =============---------------
     
     /**
      * @param string $template
      */
-    public function SetSqlParamTemplate(string $template = ":param")
+    public function SetSqlParamTemplate(string $template = null)
     {
+        if (is_null($template))
+        {
+            $template = ":param";
+        }
         $this->sqlparamtemplate = $template;
     }
     
@@ -90,8 +114,6 @@ class SqlBuilder
     {
         $this->Object = $Object;
     }
-    
-    
     
     //---------------=============  PRIVATE  =============---------------
     
@@ -154,7 +176,7 @@ class SqlBuilder
         else
         {
             $this->paramarray[] = $param;
-            $countstring        = (string)(count($this->paramarray)-1);
+            $countstring        = (string)(count($this->paramarray) - 1);
         }
         $nameparam = $this->sqlparamtemplate . $countstring;
         
@@ -804,6 +826,32 @@ class SqlBuilder
         return $result;
     }
     
+    private function toCache(array $chema, array $data)
+    {
+        $result = false;
+        if (($this->cached) && ($this->Object !== null))
+        {
+            $this->Object->save_data_to_cache($chema, $data);
+            $result = true;
+        }
+        
+        return $result;
+    }
+    
+    private function fromCache(array $chema)
+    {
+        $result = false;
+        if (($this->cached) && ($this->Object !== null))
+        {
+            $result_cache = $this->Object->load_data_from_cache($chema);
+            if ($result_cache["result"])
+            {
+                $result = $result_cache["data"];
+            }
+        }
+        
+        return $result;
+    }
     
     //---------------=============  PUBLIC  =============---------------
     
@@ -816,12 +864,18 @@ class SqlBuilder
      */
     public function select($params)
     {
-        $result = $this->sql_select($params);
-        if (!is_null($this->Object) && ($this->executive))
+        $result = $this->fromCache($params);
+        if (($result === false) )
         {
-            if (method_exists($this->Object, "sql"))
+            $result     = $sql = $this->sql_select($params);
+            $sql_params = $this->GetSQLParams();
+            if (!is_null($this->Object) && ($this->executive))
             {
-                $result = $this->Object->sql($result, $this->GetSQLParams());
+                if (method_exists($this->Object, "sql"))
+                {
+                    $result = $this->Object->sql($sql, $sql_params);
+                    $this->toCache($params, $result);
+                }
             }
         }
         
@@ -840,7 +894,8 @@ class SqlBuilder
         {
             if (method_exists($this->Object, "sql"))
             {
-                $result = $this->Object->sql($result, $this->GetSQLParams());
+                $this->Object->sql($result, $this->GetSQLParams());
+                $result = $this->Object->ids();
             }
         }
         
@@ -890,7 +945,7 @@ class SqlBuilder
      *
      * @return bool
      */
-    public function has(array $params) : bool
+    public function has(array $params)
     {
         $params["items"] = "*";
         $params["limit"] = 1;
@@ -904,14 +959,13 @@ class SqlBuilder
      *
      * @return array
      */
-    public function get(array $params) : array
+    public function get(array $params)
     {
         $params["limit"] = 1;
         $result          = $this->sql($params);
         
         return $result;
     }
-    
     
     // ***********************    Packet executive    ****************************
     
@@ -920,12 +974,17 @@ class SqlBuilder
         return $this->paramarray;
     }
     
+    public function FreeSQLParams()
+    {
+        $this->paramarray = [];
+    }
+    
     /**
      * @param $Scheme
      *
      * @return array
      */
-    public function Sql(array $Scheme) : array
+    public function Sql(array $Scheme)
     {
         $returnsql = [];
         
@@ -935,29 +994,40 @@ class SqlBuilder
             $NameAndAlias = $this->Get_TableTemplate($key);
             if (method_exists($this, $NameAndAlias["table"]))
             {
-                $namefunction = $NameAndAlias["table"];
-                $returnsql["sqls"][]  = trim($this->$namefunction($SchemeSql));
+                $namefunction  = $NameAndAlias["table"];
+                $aliasfunction = $NameAndAlias["alias"];
+                
+                $return_alias = ($aliasfunction == "" ? $namefunction : $aliasfunction);
+                $result_sql   = $this->$namefunction($SchemeSql);
+                if (!$this->executive)
+                {
+                    $result_sql_params = $this->GetSQLParams();
+                    $this->FreeSQLParams();
+                    
+                    $returnsql[$return_alias]["sql"]    = $result_sql;
+                    $returnsql[$return_alias]["params"] = $result_sql_params;
+                }
+                else
+                {
+                    $returnsql[$return_alias]["result"] = $result_sql;
+                }
+                
+                if ($aliasfunction != "")
+                {
+                    $this->SetSchemeSql($aliasfunction, $SchemeSql);
+                }
             }
         }
-        //End Transaction //TODO добавить кончание транзакции пакета
         
-        if (!$this->executive)
-        {
-            $resultsql = $returnsql;
-        }
-        else
-        {
-            $resultsql["sqls"] = implode(";\r\n\r\n", $returnsql["sqls"]);
-        }
-        $resultsql["params"] = $this->GetSQLParams();
+        //End Transaction //TODO добавить окончание транзакции пакета
         
-        return $resultsql;
+        return $returnsql;
     }
     
     /**
      * @return array
      */
-    public function GetIds() : array
+    public function GetIds()
     {
         $result = [];
         //TODO Return ids after insert
@@ -978,10 +1048,10 @@ class SqlBuilder
      *
      * @return bool
      */
-    public function SetSchemeSql(string $name, array $SchemeSql) : bool
+    public function SetSchemeSql(string $name, array $SchemeSql)
     {
         $this->sqlstorage[$name] = $SchemeSql;
-        if ($this->savesession)
+        if ($this->savetosession)
         {
             $_SESSION["SchemeSql"] = $this->sqlstorage;
         }
@@ -995,21 +1065,21 @@ class SqlBuilder
      *
      * @return string
      */
-    public function GetSchemeSql(string $name, array $variation = []) : string
+    public function GetSchemeSql(string $name, array $variation = [])
     {
-        $Scheme  = $this->sql_GetScheme($name, $variation);
-        $textsql = $this->Sql($Scheme);
+        $Scheme    = $this->sql_GetScheme($name, $variation);
+        $resultsql = $this->Sql($Scheme);
         
-        return $textsql;
+        return $resultsql;
     }
     
     private function sql_GetScheme($name, $variation = [])
     {
-        $SchemeSql = $this->sqlstorage[$name];
-        if ($this->savesession)
+        if ($this->savetosession)
         {
             $this->sqlstorage = $_SESSION["SchemeSql"];
         }
+        $SchemeSql = $this->sqlstorage[$name];
         
         if (count($variation) > 0)
         {
